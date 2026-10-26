@@ -1,0 +1,108 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>من رغدان لصويلح · ع الأوتوستراد</title>
+<style>
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none}body{margin:0;overflow:hidden;font-family:Tahoma,Arial,sans-serif;background:#d9c7a3;color:#222}
+#hud{position:fixed;inset:0;pointer-events:none}
+.box{position:absolute;background:rgba(20,20,20,.72);color:#fff;border-radius:12px;padding:8px 12px}
+#spd{bottom:14px;left:50%;transform:translateX(-50%);font-size:30px;text-align:center}#spd small{font-size:13px;display:block}
+#stats{top:10px;right:10px;font-size:15px;line-height:1.6}
+#exit{top:10px;left:10px;background:#0a6b3a;border:3px solid #fff;font-size:15px;min-width:170px}#exit b{font-size:20px;display:block}
+#prog{top:118px;right:10px;font-size:12px;width:200px}#prog div{padding:2px 0;opacity:.6}#prog .done{opacity:1;color:#9f9}#prog .cur{opacity:1;color:#fd3;font-weight:bold}
+#miss{top:118px;left:10px;font-size:13px;width:210px}
+#msg{top:40%;left:50%;transform:translate(-50%,-50%);font-size:24px;display:none;text-align:center}
+.tb{position:fixed;bottom:20px;width:80px;height:80px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:34px;border:2px solid #fff;display:flex;align-items:center;justify-content:center;touch-action:none}
+#tl{left:16px}#tr{left:106px}#tg{right:16px;background:rgba(0,120,0,.6)}#tbk{right:106px;background:rgba(150,0,0,.6)}
+#start{position:fixed;inset:0;background:linear-gradient(#e8d6b0,#b89a6a);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9;text-align:center}
+#start h1{font-size:40px;margin:6px;color:#3a2a12}#start p{max-width:520px;padding:0 12px}
+#go{font-size:26px;padding:12px 40px;border:0;border-radius:14px;background:#f2c200;color:#222;cursor:pointer;font-family:inherit}
+</style></head><body>
+<div id="start"><h1>من رغدان لصويلح</h1><div style="font-size:20px">ع الأوتوستراد · عمّان</div>
+<p>نموذج تجريبي — مسار مُبسّط وغير دقيق جغرافياً.<br>تجاوز السيارات، اجمع القطع، وحقّق المهام.<br>الأسهم / WASD أو أزرار الشاشة</p>
+<div id="load">...جاري التحميل</div><button id="go" style="display:none">ابدأ الرحلة</button></div>
+<div id="hud">
+<div id="stats" class="box">⏱ <span id="t">0.0</span> ث<br>🪙 <span id="c">0</span><br>🚗 تجاوزات: <span id="o">0</span></div>
+<div id="exit" class="box">المخرج التالي<b id="ex">وسط البلد</b><span id="dist"></span></div>
+<div id="prog" class="box"></div><div id="miss" class="box"></div>
+<div id="spd" class="box"><span id="s">0</span><small>كم/س</small></div><div id="msg" class="box"></div></div>
+<div class="tb" id="tl">◀</div><div class="tb" id="tr">▶</div><div class="tb" id="tbk">▼</div><div class="tb" id="tg">▲</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+const $=id=>document.getElementById(id);
+const STOPS=['مجمع رغدان','وسط البلد','دوار الداخلية','دوار المدينة','شارع الجامعة الأردنية','دوار صويلح'];
+const R=new THREE.WebGLRenderer({antialias:devicePixelRatio<2});R.setPixelRatio(Math.min(devicePixelRatio,1.5));R.setSize(innerWidth,innerHeight);document.body.prepend(R.domElement);
+const S=new THREE.Scene();S.background=new THREE.Color(0xbfd8ea);S.fog=new THREE.Fog(0xd8cdb4,60,320);
+const cam=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.5,600);
+S.add(new THREE.HemisphereLight(0xfff4dd,0x8a7350,1.1));const sun=new THREE.DirectionalLight(0xffffff,1.4);sun.position.set(50,100,30);S.add(sun);
+// spline corridor (stylized)
+const pts=[[0,0],[60,-300],[-80,-650],[40,-1000],[200,-1350],[120,-1700],[-60,-2050],[0,-2400],[150,-2750],[100,-3100],[-50,-3450],[0,-3800]].map(([x,z],i)=>new THREE.Vector3(x,Math.sin(i*1.3)*6,z));
+const curve=new THREE.CatmullRomCurve3(pts);const L=curve.getLength();const W=14,LANES=[-5.25,-1.75,1.75,5.25];
+const N=900,pos=[],idx=[],up=new THREE.Vector3(0,1,0);
+function frame(u){const p=curve.getPointAt(u),t=curve.getTangentAt(u),r=new THREE.Vector3().crossVectors(t,up).normalize();return{p,t,r};}
+for(let i=0;i<=N;i++){const{p,r}=frame(i/N);for(const s of[-W/2-3,-W/2,W/2,W/2+3])pos.push(p.x+r.x*s,p.y+(Math.abs(s)>W/2?0.15:0),p.z+r.z*s);}
+for(let i=0;i<N;i++)for(let k=0;k<3;k++){const a=i*4+k,b=a+4;idx.push(a,b,a+1,a+1,b,b+1);}
+const rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));rg.setIndex(idx);rg.computeVertexNormals();
+const cols=[];for(let i=0;i<=N;i++)cols.push(.85,.8,.7,.27,.27,.29,.27,.27,.29,.85,.8,.7);rg.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+S.add(new THREE.Mesh(rg,new THREE.MeshLambertMaterial({vertexColors:true,side:2})));
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(3000,5000),new THREE.MeshLambertMaterial({color:0xc9b58a}));ground.rotation.x=-Math.PI/2;ground.position.set(0,-3,-1900);S.add(ground);
+// lane dashes
+const dg=new THREE.BoxGeometry(.25,.05,3),dm=new THREE.MeshBasicMaterial({color:0xffffff});const dashes=new THREE.InstancedMesh(dg,dm,Math.floor(L/12)*3);let di=0;const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),V=new THREE.Vector3(1,1,1);
+for(let d=0;d<L-12;d+=12){const{p,t,r}=frame(d/L);Q.setFromUnitVectors(new THREE.Vector3(0,0,1),t);for(const s of[-3.5,0,3.5]){M.compose(new THREE.Vector3(p.x+r.x*s,p.y+.1,p.z+r.z*s),Q,V);dashes.setMatrixAt(di++,M);}}S.add(dashes);
+// limestone buildings + hills
+const bg=new THREE.BoxGeometry(1,1,1),bcount=700,bm=new THREE.MeshLambertMaterial({vertexColors:false});const B=new THREE.InstancedMesh(bg,bm,bcount);const lime=[0xe8dcc0,0xdccaa2,0xf0e6d0,0xcdb88f,0xe2d3b0];const col=new THREE.Color();
+for(let i=0;i<bcount;i++){const u=Math.random(),{p,r}=frame(u),side=Math.random()<.5?-1:1,off=side*(W/2+8+Math.random()*60),h=6+Math.random()*(u<.3?14:22),w=8+Math.random()*10;
+M.compose(new THREE.Vector3(p.x+r.x*off,p.y+h/2-1+Math.random()*4*(Math.abs(off)/30),p.z+r.z*off),new THREE.Quaternion().setFromAxisAngle(up,Math.random()),new THREE.Vector3(w,h,w*.8+Math.random()*6));B.setMatrixAt(i,M);B.setColorAt(i,col.setHex(lime[i%5]));}S.add(B);
+// water tanks on roofs feel: small hills
+const hm=new THREE.MeshLambertMaterial({color:0xb59c6c,flatShading:true});for(let i=0;i<40;i++){const h=new THREE.Mesh(new THREE.ConeGeometry(60+Math.random()*80,30+Math.random()*50,6),hm);const{p,r}=frame(Math.random()),s=(Math.random()<.5?-1:1)*(150+Math.random()*200);h.position.set(p.x+r.x*s,-3,p.z+r.z*s);S.add(h);}
+// stop signs (green gantries) + roundabout markers
+const stopU=STOPS.map((_,i)=>i/(STOPS.length-1));
+function label(txt){const c=document.createElement('canvas');c.width=512;c.height=128;const g=c.getContext('2d');g.fillStyle='#0a6b3a';g.fillRect(0,0,512,128);g.strokeStyle='#fff';g.lineWidth=8;g.strokeRect(6,6,500,116);g.fillStyle='#fff';g.font='bold 54px Tahoma';g.textAlign='center';g.direction='rtl';g.fillText(txt,256,84);return new THREE.CanvasTexture(c);}
+stopU.forEach((u,i)=>{if(i==0)return;const{p,t,r}=frame(Math.max(0,u-.012));const sg=new THREE.Mesh(new THREE.PlaneGeometry(12,3),new THREE.MeshBasicMaterial({map:label(STOPS[i]),side:2}));sg.position.set(p.x,p.y+8,p.z);sg.lookAt(p.x-t.x,p.y+8,p.z-t.z);S.add(sg);
+const pole=new THREE.Mesh(new THREE.BoxGeometry(.4,8,.4),new THREE.MeshLambertMaterial({color:0x777777}));for(const s of[-W/2-1,W/2+1]){const q=pole.clone();q.position.set(p.x+r.x*s,p.y+4,p.z+r.z*s);S.add(q);}
+const {p:p2,r:r2}=frame(Math.min(1,u));const ring=new THREE.Mesh(new THREE.CylinderGeometry(6,6,1,16),new THREE.MeshLambertMaterial({color:0x6a8f3a}));ring.position.set(p2.x+r2.x*(W/2+14),p2.y,p2.z+r2.z*(W/2+14));S.add(ring);});
+// car builder
+function car(body,taxi){const g=new THREE.Group();const m=new THREE.MeshLambertMaterial({color:body});const b=new THREE.Mesh(new THREE.BoxGeometry(2,.8,4.2),m);b.position.y=.7;g.add(b);
+const top=new THREE.Mesh(new THREE.BoxGeometry(1.7,.7,2.2),new THREE.MeshLambertMaterial({color:0x223344}));top.position.set(0,1.45,-.1);g.add(top);
+const wg=new THREE.CylinderGeometry(.38,.38,.3,10),wm=new THREE.MeshLambertMaterial({color:0x111111});for(const[x,z]of[[-1,1.3],[1,1.3],[-1,-1.3],[1,-1.3]]){const w=new THREE.Mesh(wg,wm);w.rotation.z=Math.PI/2;w.position.set(x,.38,z);g.add(w);}
+if(taxi){const s=new THREE.Mesh(new THREE.BoxGeometry(.8,.25,.35),new THREE.MeshBasicMaterial({color:0x111111}));s.position.set(0,1.9,0);g.add(s);const st=new THREE.Mesh(new THREE.BoxGeometry(2.02,.12,4.22),new THREE.MeshBasicMaterial({color:0x222222}));st.position.y=.75;g.add(st);}
+return g;}
+const player=car(0xf2c200,true);
+{const c=document.createElement('canvas');c.width=256;c.height=64;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,256,64);g.fillStyle='#000';g.font='bold 34px Tahoma';g.textAlign='center';g.fillText('١٠-٢٠٢٦ · عمّان',128,44);const pl=new THREE.Mesh(new THREE.PlaneGeometry(1.2,.3),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)}));pl.position.set(0,.6,2.12);pl.rotation.y=Math.PI;player.add(pl);}
+S.add(player);
+const npcCols=[0xffffff,0x9aa4ad,0x2b4a7a,0x7a1f1f,0xf2c200,0x333333,0x3c6e3c];const npcs=[];
+for(let i=0;i<34;i++){const c=car(npcCols[i%7],npcCols[i%7]==0xf2c200);S.add(c);npcs.push({m:c,d:80+i*(L/36),lane:LANES[i%4]*(i%4<2?1:1),v:(40+Math.random()*30)/3.6,passed:false});}
+// coins
+const coinG=new THREE.CylinderGeometry(.6,.6,.15,12),coinM=new THREE.MeshLambertMaterial({color:0xffd23a,emissive:0x664400});const coins=[];
+for(let d=150;d<L-50;d+=55){const c=new THREE.Mesh(coinG,coinM);c.rotation.x=Math.PI/2;S.add(c);coins.push({m:c,d,lane:LANES[Math.floor(Math.random()*4)],got:false});}
+function place(o,d,x,yaw=0){const u=Math.min(Math.max(d/L,0),1),{p,t,r}=frame(u);o.position.set(p.x+r.x*x,p.y,p.z+r.z*x);o.rotation.set(o.rotation.x,Math.atan2(t.x,t.z)+yaw,o.rotation.z);}
+// state
+let d=0,x=LANES[1],v=0,time=0,coinsN=0,over=0,maxV=0,stop=0,running=false,done=false;const keys={};
+const MISS=[{t:'وصّل سرعة ١٠٠ كم/س',ok:()=>maxV>=100},{t:'تجاوز ١٠ سيارات',ok:()=>over>=10},{t:'خلّص الرحلة بأقل من ٣:٠٠',ok:()=>done&&time<180,fail:()=>time>=180}];
+$('prog').innerHTML=STOPS.map((s,i)=>`<div id="p${i}">${i+1}. ${s}</div>`).join('');
+addEventListener('keydown',e=>keys[e.key.toLowerCase()]=1);addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
+for(const[id,k]of[['tl','arrowleft'],['tr','arrowright'],['tg','arrowup'],['tbk','arrowdown']]){const el=$(id);el.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=1});for(const ev of['pointerup','pointerleave','pointercancel'])el.addEventListener(ev,()=>keys[k]=0);}
+function flash(t,ms=1500){const m=$('msg');m.innerHTML=t;m.style.display='block';clearTimeout(flash.h);if(ms)flash.h=setTimeout(()=>m.style.display='none',ms);}
+const ar=n=>String(n).replace(/\d/g,c=>'٠١٢٣٤٥٦٧٨٩'[c]);
+let last=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;
+if(running&&!done){time+=dt;const acc=keys['arrowup']||keys['w']||!('ontouchstart'in window)&&false;
+const gas=keys['arrowup']||keys['w'],brk=keys['arrowdown']||keys['s'];v+=(gas?14:brk?-30:-4)*dt;v=Math.max(0,Math.min(v,150/3.6));
+const st=(keys['arrowleft']||keys['a']?1:0)-(keys['arrowright']||keys['d']?1:0);x+=st*dt*(4+v*.25);x=Math.max(-W/2+1,Math.min(W/2-1,x));if(Math.abs(x)>W/2-1.2)v*=1-dt*.8;
+d+=v*dt;maxV=Math.max(maxV,v*3.6);
+for(const n of npcs){n.d+=n.v*dt;if(n.d>L-5)n.d-=L-100;const dz=n.d-d;if(Math.abs(dz)<4.2&&Math.abs(n.lane-x)<2){v=Math.min(v,n.v*.5);d=n.d-4.3;flash('💥 اصطدام!',700);}
+if(!n.passed&&dz<-4){n.passed=true;over++;}if(dz>30)n.passed=false;}
+for(const c of coins)if(!c.got&&Math.abs(c.d-d)<2&&Math.abs(c.lane-x)<1.6){c.got=true;c.m.visible=false;coinsN++;}
+const ns=stopU.findIndex(u=>u*L>d+1);const cur=ns<0?STOPS.length-1:ns-1;if(cur>stop){stop=cur;flash('📍 '+STOPS[stop]);}
+if(d>=L-2){done=true;stop=5;const r=MISS.map(m=>(m.ok()?'✅ ':'❌ ')+m.t).join('<br>');flash(`🏁 وصلت دوار صويلح!<br>الوقت: ${ar(time.toFixed(1))} ث · 🪙 ${ar(coinsN)}<br>${r}<br><br><span style="pointer-events:auto;cursor:pointer;color:#fd3" onclick="location.reload()">↻ إعادة</span>`,0);$('msg').style.pointerEvents='auto';}}
+place(player,d,x,Math.PI);player.rotation.z=0;
+for(const n of npcs)place(n.m,n.d,n.lane,Math.PI);for(const c of coins)if(!c.got){place(c.m,c.d,c.lane);c.m.position.y+=1;c.m.rotation.z+=dt*3;}
+const {p,t,r}=frame(Math.max(0,(d-9)/L));cam.position.set(p.x+r.x*x*.8,p.y+4.2,p.z+r.z*x*.8);const la=frame(Math.min(1,(d+14)/L)).p;cam.lookAt(la.x+r.x*x*.5,la.y+1,la.z+r.z*x*.5);
+cam.fov=65+v*.35;cam.updateProjectionMatrix();
+$('s').textContent=ar(Math.round(v*3.6));$('t').textContent=ar(time.toFixed(1));$('c').textContent=ar(coinsN);$('o').textContent=ar(over);
+const nx=Math.min(stop+1,5);$('ex').textContent=STOPS[nx];$('dist').textContent=done?'وصلت!':ar(Math.max(0,Math.round((stopU[nx]*L-d))))+' م';
+for(let i=0;i<6;i++)$('p'+i).className=i<=stop?(i==stop?'cur':'done'):'';
+$('miss').innerHTML='<b>المهام</b><br>'+MISS.map(m=>(m.ok()?'✅ ':m.fail&&m.fail()?'❌ ':'⬜ ')+m.t).join('<br>');
+R.render(S,cam);}
+requestAnimationFrame(loop);
+$('load').style.display='none';$('go').style.display='block';$('go').onclick=()=>{$('start').style.display='none';running=true;flash('🚕 يلا من رغدان!');};
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();R.setSize(innerWidth,innerHeight);});
+</script></body></html>
